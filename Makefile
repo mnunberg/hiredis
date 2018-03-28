@@ -66,7 +66,7 @@ ifeq ($(uname_S),Darwin)
   DYLIB_MAKE_CMD=$(CC) -shared -Wl,-install_name,$(DYLIB_MINOR_NAME) -o $(DYLIBNAME) $(LDFLAGS)
 endif
 
-all: $(DYLIBNAME) $(STLIBNAME) hiredis-test $(PKGCONFNAME)
+all: $(DYLIBNAME) $(STLIBNAME) hiredis-test $(PKGCONFNAME) bench
 
 # Deps (use make dep to generate this)
 async.o: async.c fmacros.h async.h hiredis.h read.h sds.h net.h dict.c dict.h
@@ -102,6 +102,9 @@ hiredis-example-ivykis: examples/example-ivykis.c adapters/ivykis.h $(STLIBNAME)
 
 hiredis-example-macosx: examples/example-macosx.c adapters/macosx.h $(STLIBNAME)
 	$(CC) -o examples/$@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. $< -framework CoreFoundation $(STLIBNAME)
+
+bench: bench.c $(STLIBNAME)
+	$(CC) -o $@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. $< $(STLIBNAME)
 
 ifndef AE_DIR
 hiredis-example-ae:
