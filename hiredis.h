@@ -34,6 +34,7 @@
 #ifndef __HIREDIS_H
 #define __HIREDIS_H
 #include "read.h"
+#include "reply.h"
 #include <stdarg.h> /* for va_list */
 #include <sys/time.h> /* for struct timeval */
 #include <stdint.h> /* uintXX_t, etc */
@@ -108,15 +109,7 @@
 extern "C" {
 #endif
 
-/* This is the reply object returned by redisCommand() */
-typedef struct redisReply {
-    int type; /* REDIS_REPLY_* */
-    long long integer; /* The integer when type is REDIS_REPLY_INTEGER */
-    size_t len; /* Length of string */
-    char *str; /* Used for both REDIS_REPLY_ERROR and REDIS_REPLY_STRING */
-    size_t elements; /* number of elements, for REDIS_REPLY_ARRAY */
-    struct redisReply **element; /* elements vector for REDIS_REPLY_ARRAY */
-} redisReply;
+typedef void redisReply;
 
 redisReader *redisReaderCreate(void);
 
@@ -144,7 +137,7 @@ typedef struct redisContext {
     int flags;
     char *obuf; /* Write buffer */
     redisReader *reader; /* Protocol reader */
-
+    redisReplyAccessors accessors; /* For accessing replies */
     enum redisConnectionType connection_type;
     struct timeval *timeout;
 
@@ -174,6 +167,9 @@ redisContext *redisConnectUnix(const char *path);
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
 redisContext *redisConnectUnixNonBlock(const char *path);
 redisContext *redisConnectFd(int fd);
+redisContext *redisConnectWithReader(const char *ip, int port,
+                                     redisReader *reader,
+                                     redisReplyAccessors *accessors);
 
 /**
  * Reconnect the given context using the saved information.
@@ -218,6 +214,19 @@ int redisAppendCommandArgv(redisContext *c, int argc, const char **argv, const s
 void *redisvCommand(redisContext *c, const char *format, va_list ap);
 void *redisCommand(redisContext *c, const char *format, ...);
 void *redisCommandArgv(redisContext *c, int argc, const char **argv, const size_t *argvlen);
+
+#define REDIS_REPLY_GETTYPE(ctx, r) (ctx)->accessors.getType(r)
+#define REDIS_REPLY_GETARRLEN(ctx, r) (ctx)->accessors.getArrayLength(r)
+#define REDIS_REPLY_GETARRELEM(ctx, r, i) (ctx)->accessors.getArrayElement(r, i)
+#define REDIS_REPLY_GETSTR(ctx, r, n) (ctx)->accessors.getString(r, n)
+#define REDIS_REPLY_GETSTRZ(ctx, r) (ctx)->accessors.getString(r, NULL)
+#define REDIS_REPLY_GETSTRLEN(ctx, r)      \
+    ({                                     \
+        size_t n;                          \
+        (ctx)->accessors.getString(r, &n); \
+        n;                                 \
+    })
+#define REDIS_REPLY_GETINT(ctx, r) (ctx)->accessors.getInteger(r)
 
 #ifdef __cplusplus
 }

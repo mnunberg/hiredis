@@ -43,150 +43,6 @@
 #include "net.h"
 #include "sds.h"
 
-static redisReply *createReplyObject(int type);
-static void *createStringObject(const redisReadTask *task, char *str, size_t len);
-static void *createArrayObject(const redisReadTask *task, int elements);
-static void *createIntegerObject(const redisReadTask *task, long long value);
-static void *createNilObject(const redisReadTask *task);
-
-/* Default set of functions to build the reply. Keep in mind that such a
- * function returning NULL is interpreted as OOM. */
-static redisReplyObjectFunctions defaultFunctions = {
-    createStringObject,
-    createArrayObject,
-    createIntegerObject,
-    createNilObject,
-    freeReplyObject
-};
-
-/* Create a reply object */
-static redisReply *createReplyObject(int type) {
-    redisReply *r = calloc(1,sizeof(*r));
-
-    if (r == NULL)
-        return NULL;
-
-    r->type = type;
-    return r;
-}
-
-/* Free a reply object */
-void freeReplyObject(void *reply) {
-    redisReply *r = reply;
-    size_t j;
-
-    if (r == NULL)
-        return;
-
-    switch(r->type) {
-    case REDIS_REPLY_INTEGER:
-        break; /* Nothing to free */
-    case REDIS_REPLY_ARRAY:
-        if (r->element != NULL) {
-            for (j = 0; j < r->elements; j++)
-                if (r->element[j] != NULL)
-                    freeReplyObject(r->element[j]);
-            free(r->element);
-        }
-        break;
-    case REDIS_REPLY_ERROR:
-    case REDIS_REPLY_STATUS:
-    case REDIS_REPLY_STRING:
-        if (r->str != NULL)
-            free(r->str);
-        break;
-    }
-    free(r);
-}
-
-static void *createStringObject(const redisReadTask *task, char *str, size_t len) {
-    redisReply *r, *parent;
-    char *buf;
-
-    r = createReplyObject(task->type);
-    if (r == NULL)
-        return NULL;
-
-    buf = malloc(len+1);
-    if (buf == NULL) {
-        freeReplyObject(r);
-        return NULL;
-    }
-
-    assert(task->type == REDIS_REPLY_ERROR  ||
-           task->type == REDIS_REPLY_STATUS ||
-           task->type == REDIS_REPLY_STRING);
-
-    /* Copy string value */
-    memcpy(buf,str,len);
-    buf[len] = '\0';
-    r->str = buf;
-    r->len = len;
-
-    if (task->parent) {
-        parent = task->parent->obj;
-        assert(parent->type == REDIS_REPLY_ARRAY);
-        parent->element[task->idx] = r;
-    }
-    return r;
-}
-
-static void *createArrayObject(const redisReadTask *task, int elements) {
-    redisReply *r, *parent;
-
-    r = createReplyObject(REDIS_REPLY_ARRAY);
-    if (r == NULL)
-        return NULL;
-
-    if (elements > 0) {
-        r->element = calloc(elements,sizeof(redisReply*));
-        if (r->element == NULL) {
-            freeReplyObject(r);
-            return NULL;
-        }
-    }
-
-    r->elements = elements;
-
-    if (task->parent) {
-        parent = task->parent->obj;
-        assert(parent->type == REDIS_REPLY_ARRAY);
-        parent->element[task->idx] = r;
-    }
-    return r;
-}
-
-static void *createIntegerObject(const redisReadTask *task, long long value) {
-    redisReply *r, *parent;
-
-    r = createReplyObject(REDIS_REPLY_INTEGER);
-    if (r == NULL)
-        return NULL;
-
-    r->integer = value;
-
-    if (task->parent) {
-        parent = task->parent->obj;
-        assert(parent->type == REDIS_REPLY_ARRAY);
-        parent->element[task->idx] = r;
-    }
-    return r;
-}
-
-static void *createNilObject(const redisReadTask *task) {
-    redisReply *r, *parent;
-
-    r = createReplyObject(REDIS_REPLY_NIL);
-    if (r == NULL)
-        return NULL;
-
-    if (task->parent) {
-        parent = task->parent->obj;
-        assert(parent->type == REDIS_REPLY_ARRAY);
-        parent->element[task->idx] = r;
-    }
-    return r;
-}
 
 /* Return the number of digits of 'v' when converted to string in radix 10.
  * Implementation borrowed from link in redis/src/util.c:string2ll(). */
@@ -586,7 +442,7 @@ void __redisSetError(redisContext *c, int type, const char *str) {
 }
 
 redisReader *redisReaderCreate(void) {
-    return redisReaderCreateWithFunctions(&defaultFunctions);
+    return redisReaderCreateWithFunctions(&redisReplyLegacyFunctions);
 }
 
 static redisContext *redisContextInit(void) {
@@ -600,6 +456,7 @@ static redisContext *redisContextInit(void) {
     c->errstr[0] = '\0';
     c->obuf = sdsempty();
     c->reader = redisReaderCreate();
+    c->accessors = redisReplyLegacyAccessors;
     c->tcp.host = NULL;
     c->tcp.source_addr = NULL;
     c->unix_sock.path = NULL;
@@ -682,6 +539,19 @@ redisContext *redisConnect(const char *ip, int port) {
 
     c->flags |= REDIS_BLOCK;
     redisContextConnectTcp(c,ip,port,NULL);
+    return c;
+}
+
+redisContext *redisConnectWithReader(const char *ip, int port,
+                                     redisReader *reader,
+                                     redisReplyAccessors *accessors) {
+    redisContext *c = redisContextInit();
+    c->flags |= REDIS_BLOCK;
+    redisReaderFree(c->reader);
+    c->reader = reader;
+    c->accessors = *accessors;
+    c->flags |= REDIS_BLOCK;
+    redisContextConnectTcp(c, ip, port, NULL);
     return c;
 }
 
