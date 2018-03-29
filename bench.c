@@ -6,23 +6,42 @@
 #define TEST_IP "localhost"
 #define TEST_PORT 6379
 #define TEST_CMD "FT.AGGREGATE gh * LOAD 2 @type @date"
-#define ITERATIONS 3
+#define ITERATIONS 10
+
+#define USE_V2 1
+#define USE_BLOCK_ALLOCATOR 1
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    (void)argc; (void)argv;
+    redisReplyAllocator alloc = {{0}};
+    redisContext *ctx;
+    redisReader *reader;
+    redisReplyAccessors *acc;
 
-    redisReader *reader =
-        redisReaderCreateWithFunctions(&redisReplyV2Functions);
-    redisContext *ctx = redisConnectWithReader(TEST_IP, TEST_PORT, reader,
-                                               &redisReplyV2Accessors);
-    // redisContext *ctx = redisConnect(TEST_IP, TEST_PORT);
+    if (USE_V2) {
+        reader = redisReaderCreateWithFunctions(&redisReplyV2Functions);
+        acc = &redisReplyV2Accessors;
+        if (USE_BLOCK_ALLOCATOR) {
+            initBlockAllocator(&alloc);
+            reader->privdata = &alloc;
+        }
+    } else {
+        reader = redisReaderCreateWithFunctions(&redisReplyLegacyFunctions);
+        acc = &redisReplyLegacyAccessors;
+    }
+
+    ctx = redisConnectWithReader(TEST_IP, TEST_PORT, reader, acc);
+
     assert(ctx);
     for (size_t ii = 0; ii < ITERATIONS; ++ii) {
         redisReply *resp = redisCommand(ctx, TEST_CMD);
         assert(resp);
         assert(REDIS_REPLY_GETTYPE(ctx, resp) == REDIS_REPLY_ARRAY);
-        freeReplyObject(resp);
+        if (USE_V2 && USE_BLOCK_ALLOCATOR) {
+            resetBlockAllocator(&alloc);
+        } else {
+            freeReplyObject(resp);
+        }
     }
     redisFree(ctx);
     return 0;
