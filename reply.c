@@ -2,6 +2,10 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include "block_alloc.h"
+
+#define BLOCK_SIZE 256
+#define STRING_CHUNK_SIZE 1024
 
 static redisReplyV2 emptyStringReply_g = {.type = REDIS_REPLY_FLAG_STATIC |
                                              REDIS_REPLY_FLAG_TINY |
@@ -27,13 +31,22 @@ static redisReplyV2 integerReplyNeg1_g = {
     .value = {.integer = -1}};
 
 static redisReplyV2 *createV2Reply(const redisReadTask *task) {
-    (void)task;
-    redisReplyV2 *r = malloc(sizeof(redisReplyV2));
-    r->type = REDIS_REPLY_FLAG_V2;
+    redisReplyAllocator *alloc = task->privdata;
+    redisReplyV2 *r;
+    if (alloc) {
+        r = BlkAlloc_Alloc(&alloc->allocReplies, sizeof(*r),
+                           sizeof(*r) * BLOCK_SIZE);
+        r->type = REDIS_REPLY_FLAG_BLKALLOC;
+    } else {
+        r = malloc(sizeof(redisReplyV2));
+        r->type = 0;
+    }
+    r->type |= REDIS_REPLY_FLAG_V2;
     return r;
 }
 
-static redisReplyV2 * assignParentChild(const redisReadTask *task, redisReplyV2 *resp) {
+static redisReplyV2 *
+assignParentChild(const redisReadTask *task, redisReplyV2 *resp) {
     if (task->parent) {
         redisReplyV2 *parent = task->parent->obj;
         assert((parent->type & REDIS_REPLY_MASK) == REDIS_REPLY_ARRAY);
@@ -61,12 +74,18 @@ static void *createStringV2(const redisReadTask *task, char *str, size_t len) {
         r->value.tinystr.str[len] = 0;
         r->type |= REDIS_REPLY_FLAG_TINY;
     } else {
-        r->value.str.str = malloc(len + 1);
+        redisReplyAllocator *alloc = task->privdata;
+        if (alloc) {
+            size_t blksize =
+                STRING_CHUNK_SIZE < len + 1 ? len + 1 : STRING_CHUNK_SIZE;
+            r->value.str.str = BlkAlloc_Alloc(&alloc->allocStrings, len + 1, blksize);
+        } else {
+            r->value.str.str = malloc(len + 1);
+        }
         r->value.str.str[len] = 0;
         r->value.str.len = len;
         memcpy(r->value.str.str, str, len);
     }
-
     return assignParentChild(task, r);
 }
 
@@ -86,7 +105,16 @@ static void *createArrayV2(const redisReadTask *task, int size) {
         return assignParentChild(task, resp);
     }
 
-    resp->value.array.element = malloc(sizeof(redisReplyV2 *) * size);
+    if (task->privdata) {
+        redisReplyAllocator *alloc = task->privdata;
+        size_t blksize = size > BLOCK_SIZE ? size : BLOCK_SIZE;
+        blksize *= sizeof(redisReplyV2 *);
+        resp->value.array.element = BlkAlloc_Alloc(
+            &alloc->allocArrays, sizeof(redisReplyV2 *), blksize);
+    } else {
+        resp->value.array.element = malloc(sizeof(redisReplyV2 *) * size);
+    }
+
     resp->value.array.elements = size;
     return assignParentChild(task, resp);
 }
@@ -100,9 +128,17 @@ static void *createIntegerV2(const redisReadTask *task, long long value) {
     } else if (value == -1) {
         resp = &integerReplyNeg1_g;
     } else if (value >= 0 && value <= UINT32_MAX) {
-        resp = malloc(8);
-        resp->type =
-            REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_TINY | REDIS_REPLY_INTEGER;
+        if (task->privdata) {
+            redisReplyAllocator *alloc = task->privdata;
+            resp = BlkAlloc_Alloc(&alloc->allocTinyInts, 8, 8 * BLOCK_SIZE);
+            resp->type = REDIS_REPLY_FLAG_BLKALLOC;
+        } else {
+            resp = malloc(8);
+            resp->type = 0;
+        }
+
+        resp->type |= REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_TINY |
+                        REDIS_REPLY_INTEGER;
         resp->intpad = value;
     } else {
         resp = createV2Reply(task);
@@ -121,6 +157,12 @@ static void freeV2Reply(void *p) {
     if (resp == NULL) {
         return;
     }
+
+    if (resp->type & REDIS_REPLY_FLAG_BLKALLOC) {
+        /* Part of a block-allocated tree. Should not be freed */
+        return;
+    }
+
     int type = resp->type & REDIS_REPLY_MASK;
 
     if (type == REDIS_REPLY_ARRAY) {

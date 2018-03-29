@@ -3,8 +3,9 @@
 
 #include <stdlib.h>
 #include "read.h"
+#include "block_alloc.h"
 
-#ifdef __cplusplus
+#ifdef __cplusplush
 extern "C" {
 #endif
 
@@ -24,6 +25,9 @@ extern "C" {
 /* Reply points to static memory. Do not free */
 #define REDIS_REPLY_FLAG_STATIC 0x200
 
+#define REDIS_REPLY_FLAG_BLKALLOC 0x400
+
+#define REDIS_REPLY_FLAG_ROOT 0x800
 /**
  * Maximum length of string that can be embedded in the reply object
  * TODO: make arch dependent (7 on 32, 15 on 64).
@@ -63,6 +67,26 @@ typedef struct redisReplyV2 {
 
 extern redisReplyObjectFunctions redisReplyV2Functions;
 extern redisReplyAccessors redisReplyV2Accessors;
+
+typedef struct {
+    BlkAlloc allocReplies;
+    BlkAlloc allocStrings;
+    BlkAlloc allocArrays;
+    BlkAlloc allocTinyInts;
+} redisReplyAllocator;
+
+static inline void initBlockAllocator(redisReplyAllocator *alloc) {
+    BlkAlloc_Init(&alloc->allocReplies);
+    BlkAlloc_Init(&alloc->allocStrings);
+    BlkAlloc_Init(&alloc->allocArrays);
+    BlkAlloc_Init(&alloc->allocTinyInts);
+}
+
+static inline void resetBlockAllocator(redisReplyAllocator *alloc) {
+    BlkAlloc_Clear(&alloc->allocReplies, NULL, NULL, 0);
+    BlkAlloc_Clear(&alloc->allocStrings, NULL, NULL, 0);
+    BlkAlloc_Clear(&alloc->allocArrays, NULL, NULL, 0);
+}
 
 /* This is the reply object returned by redisCommand() */
 typedef struct redisReplyLegacy {
