@@ -13,24 +13,22 @@
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
+    redisOptions options = {.type = REDIS_CONN_TCP,
+                            .endpoint.tcp = {.ip = TEST_IP, .port = TEST_PORT}};
     redisReplyAllocator alloc = {{0}};
     redisContext *ctx;
     redisReader *reader;
     redisReplyAccessors *acc;
 
     if (USE_V2) {
-        reader = redisReaderCreateWithFunctions(&redisReplyV2Functions);
-        acc = &redisReplyV2Accessors;
+        reader = options.reader = redisReaderCreateWithFunctions(&redisReplyV2Functions);
+        acc = options.accessors = &redisReplyV2Accessors;
         if (USE_BLOCK_ALLOCATOR) {
             initBlockAllocator(&alloc);
             reader->privdata = &alloc;
         }
-    } else {
-        reader = redisReaderCreateWithFunctions(&redisReplyLegacyFunctions);
-        acc = &redisReplyLegacyAccessors;
     }
-
-    ctx = redisConnectWithReader(TEST_IP, TEST_PORT, reader, acc);
+    ctx = redisConnectWithOptions(&options);
 
     assert(ctx);
     for (size_t ii = 0; ii < ITERATIONS; ++ii) {

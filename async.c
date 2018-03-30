@@ -150,15 +150,15 @@ static void __redisAsyncCopyError(redisAsyncContext *ac) {
     ac->errstr = c->errstr;
 }
 
-redisAsyncContext *redisAsyncConnect(const char *ip, int port) {
-    redisContext *c;
-    redisAsyncContext *ac;
-
-    c = redisConnectNonBlock(ip,port);
-    if (c == NULL)
+redisAsyncContext *redisAsyncConnectWithOptions(const redisOptions *options) {
+    redisOptions myOptions = *options;
+    myOptions.options |= REDIS_OPT_NONBLOCK;
+    redisContext *c = redisConnectWithOptions(&myOptions);
+    if (c == NULL) {
         return NULL;
+    }
 
-    ac = redisAsyncInitialize(c);
+    redisAsyncContext *ac = redisAsyncInitialize(c);
     if (ac == NULL) {
         redisFree(c);
         return NULL;
@@ -166,40 +166,34 @@ redisAsyncContext *redisAsyncConnect(const char *ip, int port) {
 
     __redisAsyncCopyError(ac);
     return ac;
+}
+
+redisAsyncContext *redisAsyncConnect(const char *ip, int port) {
+    redisOptions options = {.type = REDIS_CONN_TCP,
+                            .endpoint.tcp = {.ip = ip, .port = port}};
+    return redisAsyncConnectWithOptions(&options);
 }
 
 redisAsyncContext *redisAsyncConnectBind(const char *ip, int port,
                                          const char *source_addr) {
-    redisContext *c = redisConnectBindNonBlock(ip,port,source_addr);
-    redisAsyncContext *ac = redisAsyncInitialize(c);
-    __redisAsyncCopyError(ac);
-    return ac;
+    redisOptions options = {
+        .type = REDIS_CONN_TCP,
+        .endpoint.tcp = {.ip = ip, .port = port, .source_addr = source_addr}};
+    return redisAsyncConnectWithOptions(&options);
 }
 
 redisAsyncContext *redisAsyncConnectBindWithReuse(const char *ip, int port,
                                                   const char *source_addr) {
-    redisContext *c = redisConnectBindNonBlockWithReuse(ip,port,source_addr);
-    redisAsyncContext *ac = redisAsyncInitialize(c);
-    __redisAsyncCopyError(ac);
-    return ac;
+    redisOptions options = {
+        .type = REDIS_CONN_TCP,
+        .options = REDIS_OPT_REUSEADDR,
+        .endpoint.tcp = {.ip = ip, .port = port, .source_addr = source_addr}};
+    return redisAsyncConnectWithOptions(&options);
 }
 
 redisAsyncContext *redisAsyncConnectUnix(const char *path) {
-    redisContext *c;
-    redisAsyncContext *ac;
-
-    c = redisConnectUnixNonBlock(path);
-    if (c == NULL)
-        return NULL;
-
-    ac = redisAsyncInitialize(c);
-    if (ac == NULL) {
-        redisFree(c);
-        return NULL;
-    }
-
-    __redisAsyncCopyError(ac);
-    return ac;
+    redisOptions options = {.type = REDIS_CONN_UNIX, .endpoint.unix = path};
+    return redisAsyncConnectWithOptions(&options);
 }
 
 int redisAsyncSetConnectCallback(redisAsyncContext *ac, redisConnectCallback *fn) {

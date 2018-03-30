@@ -75,6 +75,9 @@
 /* Flag that is set when we should set SO_REUSEADDR before calling bind() */
 #define REDIS_REUSEADDR 0x80
 
+/* Has a user-defined reader */
+#define REDIS_USER_READER 0x100
+
 #define REDIS_KEEPALIVE_INTERVAL 15 /* seconds */
 
 /* number of times we retry to connect in the case of EADDRNOTAVAIL and
@@ -126,7 +129,8 @@ void redisFreeSdsCommand(sds cmd);
 
 enum redisConnectionType {
     REDIS_CONN_TCP,
-    REDIS_CONN_UNIX
+    REDIS_CONN_UNIX,
+    REDIS_CONN_USERFD
 };
 
 /* Context for a connection to Redis */
@@ -156,6 +160,28 @@ typedef struct redisContext {
     size_t addrlen;
 } redisContext;
 
+
+#define REDIS_OPT_NONBLOCK 0x01
+#define REDIS_OPT_REUSEADDR 0x02
+
+typedef struct {
+    int type;
+    int options;
+    const struct timeval *timeout;
+    redisReader *reader;
+    redisReplyAccessors *accessors;
+    union {
+        struct {
+            const char *source_addr;
+            const char *ip;
+            int port;
+        } tcp;
+        const char *unix;
+        int fd;
+    } endpoint;
+} redisOptions;
+
+redisContext *redisConnectWithOptions(const redisOptions *options);
 redisContext *redisConnect(const char *ip, int port);
 redisContext *redisConnectWithTimeout(const char *ip, int port, const struct timeval tv);
 redisContext *redisConnectNonBlock(const char *ip, int port);
@@ -167,9 +193,6 @@ redisContext *redisConnectUnix(const char *path);
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
 redisContext *redisConnectUnixNonBlock(const char *path);
 redisContext *redisConnectFd(int fd);
-redisContext *redisConnectWithReader(const char *ip, int port,
-                                     redisReader *reader,
-                                     redisReplyAccessors *accessors);
 
 /**
  * Reconnect the given context using the saved information.
