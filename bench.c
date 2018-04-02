@@ -15,7 +15,6 @@ int main(int argc, char **argv) {
     (void)argc; (void)argv;
     redisOptions options = {.type = REDIS_CONN_TCP,
                             .endpoint.tcp = {.ip = TEST_IP, .port = TEST_PORT}};
-    redisReplyAllocator alloc = {{0}};
     redisContext *ctx;
     redisReader *reader;
     redisReplyAccessors *acc;
@@ -24,8 +23,7 @@ int main(int argc, char **argv) {
         reader = options.reader = redisReaderCreateWithFunctions(&redisReplyV2Functions);
         acc = options.accessors = &redisReplyV2Accessors;
         if (USE_BLOCK_ALLOCATOR) {
-            initBlockAllocator(&alloc);
-            reader->privdata = &alloc;
+            redisReaderEnableBlockAllocator(reader);
         }
     }
     ctx = redisConnectWithOptions(&options);
@@ -35,11 +33,7 @@ int main(int argc, char **argv) {
         redisReply *resp = redisCommand(ctx, TEST_CMD);
         assert(resp);
         assert(REDIS_REPLY_GETTYPE(ctx, resp) == REDIS_REPLY_ARRAY);
-        if (USE_V2 && USE_BLOCK_ALLOCATOR) {
-            resetBlockAllocator(&alloc);
-        } else {
-            freeReplyObject(resp);
-        }
+        freeReplyObject(resp);
     }
     redisFree(ctx);
     return 0;

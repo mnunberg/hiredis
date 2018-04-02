@@ -3,7 +3,6 @@
 
 #include <stdlib.h>
 #include "read.h"
-#include "block_alloc.h"
 
 #ifdef __cplusplush
 extern "C" {
@@ -68,26 +67,6 @@ typedef struct redisReplyV2 {
 extern redisReplyObjectFunctions redisReplyV2Functions;
 extern redisReplyAccessors redisReplyV2Accessors;
 
-typedef struct {
-    BlkAlloc allocReplies;
-    BlkAlloc allocStrings;
-    BlkAlloc allocArrays;
-    BlkAlloc allocTinyInts;
-} redisReplyAllocator;
-
-static inline void initBlockAllocator(redisReplyAllocator *alloc) {
-    BlkAlloc_Init(&alloc->allocReplies);
-    BlkAlloc_Init(&alloc->allocStrings);
-    BlkAlloc_Init(&alloc->allocArrays);
-    BlkAlloc_Init(&alloc->allocTinyInts);
-}
-
-static inline void resetBlockAllocator(redisReplyAllocator *alloc) {
-    BlkAlloc_Clear(&alloc->allocReplies, NULL, NULL, 0);
-    BlkAlloc_Clear(&alloc->allocStrings, NULL, NULL, 0);
-    BlkAlloc_Clear(&alloc->allocArrays, NULL, NULL, 0);
-}
-
 /* This is the reply object returned by redisCommand() */
 typedef struct redisReplyLegacy {
     int type;          /* REDIS_REPLY_* */
@@ -101,6 +80,7 @@ typedef struct redisReplyLegacy {
 extern redisReplyObjectFunctions redisReplyLegacyFunctions;
 extern redisReplyAccessors redisReplyLegacyAccessors;
 
+void redisReaderEnableBlockAllocator(redisReader *r);
 
 #define redisReplyGetType(res) ((*(int *)(res)) & REDIS_REPLY_MASK)
 #define redisReplyGetFlags(res) ((*(int *)(res)) & REDIS_FLAG_MASK)
