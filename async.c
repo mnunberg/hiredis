@@ -192,7 +192,7 @@ redisAsyncContext *redisAsyncConnectBindWithReuse(const char *ip, int port,
 }
 
 redisAsyncContext *redisAsyncConnectUnix(const char *path) {
-    redisOptions options = {.type = REDIS_CONN_UNIX, .endpoint.unix = path};
+    redisOptions options = {.type = REDIS_CONN_UNIX, .endpoint.unix_socket = path};
     return redisAsyncConnectWithOptions(&options);
 }
 
@@ -413,6 +413,12 @@ static int __redisGetSubscribeCallback(redisAsyncContext *ac, redisReply *reply,
     return REDIS_OK;
 }
 
+static void maybeFreeObject(redisAsyncContext *c, void *reply) {
+    if (!(c->c.flags & REDIS_ASYNC_NOFREEREPLIES)) {
+        c->c.reader->fn->freeObject(reply);
+    }
+}
+
 void redisProcessCallbacks(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
     redisCallback cb = {NULL, NULL, NULL};
@@ -461,7 +467,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
             if (REDIS_REPLY_GETTYPE(&ac->c, replyObj) == REDIS_REPLY_ERROR) {
                 c->err = REDIS_ERR_OTHER;
                 snprintf(c->errstr,sizeof(c->errstr),"%s",REDIS_REPLY_GETSTRZ(&ac->c, replyObj));
-                c->reader->fn->freeObject(reply);
+                maybeFreeObject(ac, reply);
                 __redisAsyncDisconnect(ac);
                 return;
             }
@@ -473,11 +479,11 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
         if (cb.fn != NULL) {
             __redisRunCallback(ac,&cb,reply);
-            c->reader->fn->freeObject(reply);
+            // c->reader->fn->freeObject(reply);
 
             /* Proceed with free'ing when redisAsyncFree() was called. */
             if (c->flags & REDIS_FREEING) {
-                __redisAsyncFree(ac);
+                maybeFreeObject(ac, reply);
                 return;
             }
         } else {

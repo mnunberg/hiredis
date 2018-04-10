@@ -7,27 +7,27 @@
 #define BLOCK_SIZE 1024
 #define STRING_CHUNK_SIZE 16384
 
-static redisReplyV2 emptyStringReply_g = {.type = REDIS_REPLY_FLAG_STATIC |
-                                             REDIS_REPLY_FLAG_TINY |
-                                             REDIS_REPLY_STRING };
+static redisReplyV2 emptyStringReply_g = {
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC |
+            REDIS_REPLY_FLAG_TINY | REDIS_REPLY_STRING};
 
-static redisReplyV2 emptyArrayReply_g = {.type = REDIS_REPLY_FLAG_STATIC |
-                                                 REDIS_REPLY_FLAG_TINY |
-                                                 REDIS_REPLY_ARRAY};
+static redisReplyV2 emptyArrayReply_g = {
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC |
+            REDIS_REPLY_FLAG_TINY | REDIS_REPLY_ARRAY};
 
-static redisReplyV2 nullReply_g = {.type = REDIS_REPLY_FLAG_STATIC |
-                                           REDIS_REPLY_NIL};
+static redisReplyV2 nullReply_g = {
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_NIL};
 
 static redisReplyV2 integerReply0_g = {
-    .type = REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
     .value = {.integer = 0}};
 
 static redisReplyV2 integerReply1_g = {
-    .type = REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
     .value = {.integer = 1}};
 
 static redisReplyV2 integerReplyNeg1_g = {
-    .type = REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
+    .type = REDIS_REPLY_FLAG_V2 | REDIS_REPLY_FLAG_STATIC | REDIS_REPLY_INTEGER,
     .value = {.integer = -1}};
 
 

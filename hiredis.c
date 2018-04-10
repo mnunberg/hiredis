@@ -547,13 +547,16 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
     if (options->options & REDIS_OPT_REUSEADDR) {
         c->flags |= REDIS_REUSEADDR;
     }
+    if (options->options & REDIS_OPT_NOFREEREPLIES) {
+        c->flags |= REDIS_ASYNC_NOFREEREPLIES;
+    }
 
     if (options->type == REDIS_CONN_TCP) {
         redisContextConnectBindTcp(c, options->endpoint.tcp.ip,
                                    options->endpoint.tcp.port, options->timeout,
                                    options->endpoint.tcp.source_addr);
     } else if (options->type == REDIS_CONN_UNIX) {
-        redisContextConnectUnix(c, options->endpoint.unix, options->timeout);
+        redisContextConnectUnix(c, options->endpoint.unix_socket, options->timeout);
     } else if (options->type == REDIS_CONN_USERFD) {
         c->fd = options->endpoint.fd;
         c->flags |= REDIS_CONNECTED;
@@ -607,20 +610,20 @@ redisContext *redisConnectBindNonBlockWithReuse(const char *ip, int port,
 }
 
 redisContext *redisConnectUnix(const char *path) {
-    redisOptions options = {.type = REDIS_CONN_UNIX, .endpoint.unix = path};
+    redisOptions options = {.type = REDIS_CONN_UNIX, .endpoint.unix_socket = path};
     return redisConnectWithOptions(&options);
 }
 
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv) {
     redisOptions options = {
-        .type = REDIS_CONN_UNIX, .endpoint.unix = path, .timeout = &tv};
+        .type = REDIS_CONN_UNIX, .endpoint.unix_socket = path, .timeout = &tv};
     return redisConnectWithOptions(&options);
 }
 
 redisContext *redisConnectUnixNonBlock(const char *path) {
     redisOptions options = {.type = REDIS_CONN_UNIX,
                             .options = REDIS_OPT_NONBLOCK,
-                            .endpoint.unix = path};
+                            .endpoint.unix_socket = path};
     return redisConnectWithOptions(&options);
 }
 

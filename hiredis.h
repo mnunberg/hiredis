@@ -78,6 +78,9 @@
 /* Has a user-defined reader */
 #define REDIS_USER_READER 0x100
 
+/* Don't automatically free replies */
+#define REDIS_ASYNC_NOFREEREPLIES 0x200
+
 #define REDIS_KEEPALIVE_INTERVAL 15 /* seconds */
 
 /* number of times we retry to connect in the case of EADDRNOTAVAIL and
@@ -163,6 +166,7 @@ typedef struct redisContext {
 
 #define REDIS_OPT_NONBLOCK 0x01
 #define REDIS_OPT_REUSEADDR 0x02
+#define REDIS_OPT_NOFREEREPLIES 0x04 /* Do not free replies in async mode */
 
 typedef struct {
     int type;
@@ -176,7 +180,7 @@ typedef struct {
             const char *ip;
             int port;
         } tcp;
-        const char *unix;
+        const char *unix_socket;
         int fd;
     } endpoint;
 } redisOptions;

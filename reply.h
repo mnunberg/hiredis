@@ -2,6 +2,7 @@
 #define HIREDIS_REPLY_H
 
 #include <stdlib.h>
+#include <stdint.h>
 #include "read.h"
 
 #ifdef __cplusplush
